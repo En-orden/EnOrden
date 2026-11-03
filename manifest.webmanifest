@@ -1,0 +1,17 @@
+{
+  "name": "EnOrden — Iglesia Torre Fuerte",
+  "short_name": "EnOrden",
+  "description": "Canciones, setlists y agenda del equipo de alabanza. «Pero hágase todo decentemente y con orden» (1 Corintios 14:40)",
+  "lang": "es-AR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#38297b",
+  "theme_color": "#38297b",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
