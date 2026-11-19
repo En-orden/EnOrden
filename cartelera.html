@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartelera · EnOrden</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<style>
+/* Pantalla de la cartelera: pensada para un televisor (Chromecast) o cualquier navegador en pantalla completa.
+   1em = 1% del ancho de la pantalla. */
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif; font-size: 1vw; color: #fff; }
+.capa { position: absolute; inset: 0; opacity: 0; transition: opacity 1s ease; }
+.capa.on { opacity: 1; }
+.capa > img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.capa .frente { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.cv-anuncio { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 6em 8em; box-sizing: border-box; overflow: hidden; }
+.cv-anuncio .cv-logo { position: absolute; right: 3em; bottom: 3em; width: 9em; height: 9em; border-radius: 50%; }
+.cv-anuncio .cv-titulo { font-size: 6em; line-height: 1.1; font-weight: 800; margin: 0 0 .35em; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.cv-anuncio .cv-texto { font-size: 3.4em; line-height: 1.35; white-space: pre-line; overflow-wrap: anywhere; max-width: 85%; }
+.cv-anuncio .cv-bar { width: 10em; height: .8em; border-radius: 1em; margin-bottom: 2.5em; }
+.cv-anuncio.est-azul { background: linear-gradient(135deg, #38297b, #241a57); color: #fff; } .est-azul .cv-bar { background: #1ea3e2; }
+.cv-anuncio.est-celeste { background: linear-gradient(135deg, #0b95d4, #0877b5); color: #fff; } .est-celeste .cv-bar { background: #fff; }
+.cv-anuncio.est-claro { background: linear-gradient(135deg, #ffffff, #e9edf7); color: #1c1640; } .est-claro .cv-bar { background: #38297b; }
+.cv-anuncio.est-oscuro { background: linear-gradient(135deg, #0d0a24, #1b1446); color: #fff; } .est-oscuro .cv-bar { background: #5cc8f6; }
+#espera { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2em; background: linear-gradient(135deg, #38297b, #0d0a24); text-align: center; transition: opacity 1s; }
+#espera img { width: 18em; height: 18em; border-radius: 50%; }
+#espera .lema { font-size: 3em; font-weight: 600; }
+#espera .info { font-size: 1.8em; opacity: .75; max-width: 70%; line-height: 1.4; }
+#urgente { position: absolute; left: 0; right: 0; bottom: 0; background: #b42318; color: #fff; padding: 2.2em 4em; font-size: 1em;
+  display: flex; align-items: center; gap: 2em; box-shadow: 0 -1em 3em rgba(0,0,0,.5); transform: translateY(110%); transition: transform .6s ease; }
+#urgente.on { transform: none; }
+#urgente .ico { font-size: 5em; line-height: 1; animation: lat 1.4s infinite; }
+#urgente .txt { font-size: 4em; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+@keyframes lat { 50% { opacity: .35; } }
+#pausa { position: absolute; top: 2em; right: 2em; background: rgba(0,0,0,.55); padding: .6em 1.2em; border-radius: 1em; font-size: 1.6em; display: none; }
+#pausa.on { display: block; }
+#estado { position: absolute; left: 2em; bottom: 1.5em; font-size: 1.2em; background: rgba(0,0,0,.55); padding: .4em .9em; border-radius: .8em; display: none; }
+#estado.on { display: block; }
+</style>
+</head>
+<body>
+<div id="capas"></div>
+<div id="espera">
+  <img src="icons/icon-512.png" alt="">
+  <div class="lema">Dios pensó en un lugar para vos</div>
+  <div class="info" id="info">Cargando la cartelera…</div>
+</div>
+<div id="pausa">⏸ En pausa</div>
+<div id="urgente"><div class="ico">⚠</div><div class="txt" id="urgTxt"></div></div>
+<div id="estado"></div>
+
+<script>
+(function () {
+  'use strict';
+  var NS = 'urn:x-cast:ar.torrefuerte.enorden';
+  var POLL_MS = 8000;
+  var esCast = /CrKey/.test(navigator.userAgent);
+
+  // ---------- Configuración: link (#k=…&api=…), mensaje del Chromecast o la última guardada ----------
+  function guardar(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function leer(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  var cfg = { k: '', api: '', otra: '' };
+  (function () {
+    var h = {};
+    location.hash.replace(/^#/, '').split('&').forEach(function (p) {
+      var i = p.indexOf('=');
+      if (i > 0) h[p.slice(0, i)] = decodeURIComponent(p.slice(i + 1));
+    });
+    cfg.k = h.k || leer('cv_k') || '';
+    cfg.api = h.api || leer('cv_api') || '';
+    cfg.otra = leer('cv_otra') || '';
+    if (h.k) { guardar('cv_k', h.k); guardar('cv_api', h.api || ''); history.replaceState(null, '', location.pathname); }
+  })();
+  function okUrl(u) { return /^https:\/\/script\.google\.com\/.+\/exec$/.test(u || ''); }
+
+  // ---------- Estado ----------
+  var lista = [];          // diapositivas que mandó el servidor
+  var general = 10;        // segundos por diapositiva
+  var version = '';
+  var imgs = {};           // id → { url, marca }
+  var actual = -1, actualId = null, timer = null, pausa = false, ultimoCmd = null;
+  var hoy = '';
+  var capas = document.getElementById('capas');
+
+  function el(tag, attrs, kids) {
+    var n = document.createElement(tag);
+    for (var k in (attrs || {})) n.setAttribute(k, attrs[k]);
+    (kids || []).forEach(function (c) { if (c != null) n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return n;
+  }
+  function info(t) { document.getElementById('info').textContent = t; }
+  function estado(t) { var e = document.getElementById('estado'); e.textContent = t || ''; e.className = t ? 'on' : ''; }
+
+  // ---------- Servidor ----------
+  function post(url, action, payload) {
+    return fetch(url, { method: 'POST', body: JSON.stringify({ action: action, payload: payload }) })
+      .then(function (r) { return r.json(); });
+  }
+  function api(action, payload) {
+    payload.k = cfg.k;
+    return post(cfg.api, action, payload).then(function (r) { aprender(r); return r; }, function (err) {
+      // El servidor principal no responde: probamos con la cuenta secundaria (si la conocemos)
+      if (!okUrl(cfg.otra) || cfg.otra === cfg.api) throw err;
+      return post(cfg.otra, action, payload).then(function (r) {
+        var vieja = cfg.api; cfg.api = cfg.otra; cfg.otra = vieja;
+        guardar('cv_api', cfg.api); guardar('cv_otra', cfg.otra);
+        aprender(r); return r;
+      });
+    });
+  }
+  function aprender(r) {
+    var s = r && r.srv;
+    if (s && okUrl(s.otra) && s.otra !== cfg.api) { cfg.otra = s.otra; guardar('cv_otra', s.otra); }
+  }
+
+  function hoyLocal() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function vigentes() {
+    var h = hoyLocal();
+    return lista.filter(function (d) {
+      if (d.inicio && d.inicio > h) return false;
+      if (d.fin && d.fin < h) return false;
+      return d.tipo === 'anuncio' || (imgs[d.id] && imgs[d.id].url);
+    });
+  }
+
+  function cargarImagenes() {
+    var faltan = lista.filter(function (d) { return d.tipo === 'foto' && (!imgs[d.id] || imgs[d.id].marca !== d.img); });
+    // Liberar las que ya no están
+    Object.keys(imgs).forEach(function (id) {
+      if (!lista.some(function (d) { return d.id === id; })) { try { URL.revokeObjectURL(imgs[id].url); } catch (e) {} delete imgs[id]; }
+    });
+    var p = Promise.resolve();
+    faltan.forEach(function (d) {
+      p = p.then(function () {
+        return api('cartelera.imagen', { id: d.id }).then(function (r) {
+          if (!r.ok) return;
+          var bin = atob(r.data.base64), arr = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          var url = URL.createObjectURL(new Blob([arr], { type: r.data.mime }));
+          if (imgs[d.id]) try { URL.revokeObjectURL(imgs[d.id].url); } catch (e) {}
+          imgs[d.id] = { url: url, marca: d.img };
+          if (actual < 0) siguiente(1);
+        }).catch(function () {});
+      });
+    });
+    return p;
+  }
+
+  function consultar() {
+    if (!cfg.k || !okUrl(cfg.api)) {
+      info(esCast ? 'Esperando que la app envíe la configuración…' : 'Abrí la cartelera desde la app EnOrden (pestaña Cartelera → «Abrir la cartelera en esta pantalla»).');
+      return Promise.resolve();
+    }
+    return api('cartelera.pantalla', { v: version }).then(function (r) {
+      estado('');
+      if (!r.ok) {
+        if (r.error === 'clave') { info('La clave de esta pantalla cambió. Volvé a iniciar la cartelera desde la app.'); lista = []; mostrarEspera(); }
+        else estado('Error del servidor: ' + (r.message || r.error));
+        return;
+      }
+      var d = r.data;
+      hoy = d.hoy;
+      aplicarEstado(d.estado);
+      if (d.diapositivas) {
+        version = d.v;
+        general = d.duracion || 10;
+        lista = d.diapositivas;
+        var vig = lista.filter(function (x) { return x.tipo === 'anuncio'; });
+        info(lista.length ? 'Cargando fotos…' : 'Todavía no hay anuncios en la cartelera.');
+        if (actual < 0 && vig.length) siguiente(1);
+        return cargarImagenes().then(function () { if (actual < 0) siguiente(1); if (!vigentes().length) mostrarEspera(); });
+      }
+    }).catch(function () { estado('Sin conexión con el servidor · sigue mostrando lo último'); });
+  }
+
+  function aplicarEstado(e) {
+    e = e || {};
+    pausa = !!e.pausa;
+    document.getElementById('pausa').className = pausa ? 'on' : '';
+    var u = document.getElementById('urgente');
+    if (e.urgente) { document.getElementById('urgTxt').textContent = e.urgente.texto; u.className = 'on'; }
+    else u.className = '';
+    var cmd = e.cmd || { n: 0 };
+    if (ultimoCmd === null) ultimoCmd = cmd.n;     // la primera vez no se repiten órdenes viejas
+    else if (cmd.n > ultimoCmd) { ultimoCmd = cmd.n; siguiente(cmd.tipo === 'anterior' ? -1 : 1, true); }
+    if (!pausa && !timer && actual >= 0) programar();
+  }
+
+  // ---------- Mostrar ----------
+  function mostrarEspera() {
+    document.getElementById('espera').style.opacity = '1';
+    Array.prototype.forEach.call(capas.children, function (c) { c.className = 'capa'; });
+    actual = -1; actualId = null;
+    clearTimeout(timer); timer = null;
+  }
+
+  function nodo(d) {
+    if (d.tipo === 'foto') {
+      var u = imgs[d.id].url;
+      return el('div', { 'class': 'capa' }, [el('img', { 'class': 'frente', src: u, alt: '' })]);
+    }
+    var a = el('div', { 'class': 'cv-anuncio est-' + (d.estilo || 'azul') }, [
+      el('div', { 'class': 'cv-bar' }),
+      el('h1', { 'class': 'cv-titulo' }, [d.titulo || '']),
+      d.texto ? el('div', { 'class': 'cv-texto' }, [d.texto]) : null,
+      el('img', { 'class': 'cv-logo', src: 'icons/icon-192.png', alt: '' })]);
+    return el('div', { 'class': 'capa' }, [a]);
+  }
+
+  function siguiente(paso, manual) {
+    var vig = vigentes();
+    if (!vig.length) { mostrarEspera(); return; }
+    var i = actualId ? vig.map(function (d) { return d.id; }).indexOf(actualId) : -1;
+    var n = i < 0 ? 0 : (i + paso + vig.length) % vig.length;
+    var d = vig[n];
+    if (d.id === actualId && !manual && vig.length === 1) { programar(); return; }
+    actual = n; actualId = d.id;
+    var nueva = nodo(d);
+    capas.appendChild(nueva);
+    document.getElementById('espera').style.opacity = '0';
+    // forzar el reflujo para que haga el fundido
+    void nueva.offsetWidth;
+    nueva.className = 'capa on';
+    var viejas = Array.prototype.slice.call(capas.children, 0, -1);
+    viejas.forEach(function (v) { v.className = 'capa'; });
+    setTimeout(function () { viejas.forEach(function (v) { if (v.parentNode) v.parentNode.removeChild(v); }); }, 1200);
+    programar();
+  }
+
+  function programar() {
+    clearTimeout(timer); timer = null;
+    if (pausa || actual < 0) return;
+    var d = vigentes().filter(function (x) { return x.id === actualId; })[0];
+    var seg = (d && d.duracion) || general || 10;
+    timer = setTimeout(function () { timer = null; if (!pausa) siguiente(1); }, seg * 1000);
+  }
+
+  // ---------- Chromecast ----------
+  function iniciarCast() {
+    var s = document.createElement('script');
+    s.src = 'https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js';
+    s.onload = function () {
+      var ctx = cast.framework.CastReceiverContext.getInstance();
+      var opts = new cast.framework.CastReceiverOptions();
+      opts.disableIdleTimeout = true;       // que no se apague sola
+      opts.maxInactivity = 3600 * 24;
+      opts.customNamespaces = {};
+      opts.customNamespaces[NS] = cast.framework.system.MessageType.JSON;
+      ctx.addCustomMessageListener(NS, function (ev) {
+        var m = ev.data || {};
+        if (m.k && okUrl(m.api)) {
+          var cambio = m.k !== cfg.k || m.api !== cfg.api;
+          cfg.k = m.k; cfg.api = m.api;
+          guardar('cv_k', m.k); guardar('cv_api', m.api);
+          if (cambio) { version = ''; ultimoCmd = null; consultar(); }
+        }
+      });
+      ctx.start(opts);
+    };
+    document.head.appendChild(s);
+  }
+
+  if (esCast) iniciarCast();
+  consultar();
+  setInterval(consultar, POLL_MS);
+  // Cambio de día: reacomoda lo vigente aunque no haya cambios
+  setInterval(function () { if (hoyLocal() !== hoy) { hoy = hoyLocal(); if (!vigentes().length) mostrarEspera(); else if (actual < 0) siguiente(1); } }, 60000);
+  // En una PC: pantalla completa con un clic o con F
+  document.addEventListener('dblclick', function () { if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function () {}); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'f' || e.key === 'F') { if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function () {}); }
+    if (e.key === 'ArrowRight') siguiente(1, true);
+    if (e.key === 'ArrowLeft') siguiente(-1, true);
+  });
+})();
+</script>
+</body>
+</html>
