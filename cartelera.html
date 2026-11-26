@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cartelera · EnOrden</title>
 <meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="icons/logo.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <style>
 /* Pantalla de la cartelera: pensada para un televisor (Chromecast) o cualquier navegador en pantalla completa.
@@ -15,6 +16,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-s
 .capa.on { opacity: 1; }
 .capa > img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .capa .frente { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.capa .frente.llenar { object-fit: cover; }
 .cv-anuncio { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 6em 8em; box-sizing: border-box; overflow: hidden; }
 .cv-anuncio .cv-logo { position: absolute; right: 3em; bottom: 3em; width: 9em; height: 9em; border-radius: 50%; }
 .cv-anuncio .cv-titulo { font-size: 6em; line-height: 1.1; font-weight: 800; margin: 0 0 .35em; letter-spacing: -.01em; overflow-wrap: anywhere; }
@@ -43,7 +45,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-s
 <body>
 <div id="capas"></div>
 <div id="espera">
-  <img src="icons/icon-512.png" alt="">
+  <img src="icons/logo.svg" alt="">
   <div class="lema">Dios pensó en un lugar para vos</div>
   <div class="info" id="info">Cargando la cartelera…</div>
 </div>
@@ -199,13 +201,13 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-s
   function nodo(d) {
     if (d.tipo === 'foto') {
       var u = imgs[d.id].url;
-      return el('div', { 'class': 'capa' }, [el('img', { 'class': 'frente', src: u, alt: '' })]);
+      return el('div', { 'class': 'capa' }, [el('img', { 'class': 'frente' + (d.ajuste === 'llenar' ? ' llenar' : ''), src: u, alt: '' })]);
     }
     var a = el('div', { 'class': 'cv-anuncio est-' + (d.estilo || 'azul') }, [
       el('div', { 'class': 'cv-bar' }),
       el('h1', { 'class': 'cv-titulo' }, [d.titulo || '']),
       d.texto ? el('div', { 'class': 'cv-texto' }, [d.texto]) : null,
-      el('img', { 'class': 'cv-logo', src: 'icons/icon-192.png', alt: '' })]);
+      el('img', { 'class': 'cv-logo', src: 'icons/logo.svg', alt: '' })]);
     return el('div', { 'class': 'capa' }, [a]);
   }
 

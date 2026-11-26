@@ -1,10 +1,10 @@
 // Service worker de EnOrden: guarda la app en el dispositivo para que abra sin conexión.
 // Los datos (canciones, setlists, agenda) los guarda la propia app; acá solo van los archivos de la app.
-const VERSION = 'enorden-bc412e2ea5';
+const VERSION = 'enorden-bf753f5a78';
 const SHELL = [
   './', './index.html', './config.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png',
-  './icons/apple-touch-icon.png', './icons/favicon-32.png',
+  './icons/apple-touch-icon.png', './icons/favicon-32.png','./icons/logo.svg',
 ];
 
 self.addEventListener('install', (e) => {
